@@ -346,7 +346,10 @@
     function copyRelatedText(index) {
       const item = (window.generatedData && window.generatedData[index]) || {};
       const related = (item.related || []).join('，');
-      const siteUrl = SITE_BASE + (item.site_id || generateRandomId(10));
+      // Get next item's site_id (wrap to first item if this is the last one)
+      const nextIndex = (index + 1) % window.generatedData.length;
+      const nextItem = window.generatedData[nextIndex];
+      const siteUrl = SITE_BASE + (nextItem?.site_id || generateRandomId(10));
       copyHtmlContent(related, siteUrl).then(() => markCopied(index, 'related'));
     }
 
