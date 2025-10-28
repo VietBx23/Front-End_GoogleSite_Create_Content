@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>关键词内容生成工具</title>
+  <style>
+    body {
+      font-family: "Microsoft YaHei", sans-serif;
+      background: #f7f9fc;
+      padding: 40px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #222;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      padding: 25px 30px;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+    }
+    textarea, input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0 20px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 15px;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 25px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f1f3f6;
+    }
+    tr:nth-child(even) {
+      background: #fafafa;
+    }
+    .btn-small {
+      padding: 4px 8px;
+      font-size: 12px;
+      margin-left: 5px;
+      border-radius: 5px;
+    }
+    .copy {
+      background: #28a745;
+    }
+    .copy:hover {
+      background: #1e7e34;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔥 多关键词内容生成工具</h1>
+
+  <div class="container">
+    <label>主关键词（每行一个）:</label>
+    <textarea id="keywords" rows="6" placeholder="例：线上赌博app&#10;PG电子平台&#10;在线澳门赌博"></textarea>
+
+    <label>网址（默认：http://191.run）:</label>
+    <input id="url" type="text" placeholder="http://191.run" value="http://191.run">
+
+    <button onclick="generateContent()">🚀 生成内容</button>
+
+    <div id="result" class="result"></div>
+  </div>
+
+  <script>
+    async function generateContent() {
+      const keywords = document.getElementById("keywords").value.trim();
+      const url = document.getElementById("url").value.trim() || "http://191.run";
+      const resultDiv = document.getElementById("result");
+
+      if (!keywords) {
+        alert("请输入至少一个主关键词！");
+        return;
+      }
+
+      resultDiv.innerHTML = "<p>⏳ 正在生成中，请稍候...</p>";
+
+      try {
+        const response = await fetch("http://127.0.0.1:5000/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords, url })
+        });
+
+        if (!response.ok) {
+          throw new Error("服务器返回错误：" + response.status);
+        }
+
+        const data = await response.json();
+        renderTable(data, url);
+
+      } catch (err) {
+        resultDiv.innerHTML = `<p style="color:red;">生成出错：${err.message}</p>`;
+      }
+    }
+
+    function renderTable(data, url) {
+      const resultDiv = document.getElementById("result");
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>主关键词</th>
+              <th>相关关键词</th>
+              <th>内容</th>
+              <th>Bing搜索链接</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      data.forEach((item, index) => {
+        if (item.error) {
+          html += `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${item.main}</td>
+              <td colspan="3" style="color:red;">错误: ${item.error}</td>
+            </tr>
+          `;
+        } else {
+          html += `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${item.main}</td>
+              <td>
+                <button class="btn-small copy" onclick="copyText('${item.related.join("，")}')">复制相关关键词</button>
+              </td>
+              <td>
+                <button class="btn-small copy" onclick="copyHtmlContent(\`${item.content.replace(/`/g, "\\`")}\`, '${url}')">复制内容</button>
+              </td>
+              <td>
+                <button class="btn-small copy" onclick="copyText('${item.bing_url}')">复制链接</button>
+              </td>
+            </tr>
+          `;
+        }
+      });
+
+      html += "</tbody></table>";
+      resultDiv.innerHTML = html;
+    }
+
+    // ✅ Copy HTML có gắn link vào clipboard
+    function copyHtmlContent(text, url) {
+      const html = `<a href="${url}" target="_blank">${text}</a>`;
+      const blob = new Blob([html], { type: "text/html" });
+      const data = [new ClipboardItem({ "text/html": blob })];
+
+      navigator.clipboard.write(data).then(() => {
+        alert("✅ 已复制HTML内容，粘贴到Google Sites将自动带链接！");
+      }).catch(() => {
+        // fallback nếu trình duyệt không hỗ trợ
+        copyText(html);
+      });
+    }
+
+    // Copy text thuần
+    function copyText(text) {
+      navigator.clipboard.writeText(text);
+      alert("✅ 已复制！");
+    }
+  </script>
+</body>
+</html>
