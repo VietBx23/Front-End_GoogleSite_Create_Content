@@ -223,20 +223,18 @@
       document.getElementById('siteIdCopyArea').style.display = 'block';
     }
     
-    function copySiteId() {
-      if (!currentSiteId) {
-        alert('请先生成 Site ID');
-        return;
-      }
-      copyText(currentSiteId);
+    // copy the 10-char site id for a specific row
+    function copySiteId(index) {
+      const item = (window.generatedData && window.generatedData[index]) || {};
+      const id = item.site_id || generateRandomId(10);
+      copyText(id).then(() => markCopied(index, 'id'));
     }
-    
-    function copySiteUrl() {
-      if (!currentSiteId) {
-        alert('请先生成 Site ID');
-        return;
-      }
-      copyText(SITE_BASE + currentSiteId);
+
+    // copy the full Google Sites URL for a specific row
+    function copySiteUrl(index) {
+      const item = (window.generatedData && window.generatedData[index]) || {};
+      const url = SITE_BASE + (item.site_id || generateRandomId(10));
+      copyText(url).then(() => markCopied(index, 'siteurl'));
     }
 
     async function generateContent() {
@@ -263,11 +261,15 @@
 
         if (!response.ok) throw new Error("服务器返回错误：" + response.status);
 
-        const data = await response.json();
-        // save globally for copy handlers
-        window.generatedData = data;
-        window.providedUrl = url;
-        renderTable(data);
+  const raw = await response.json();
+  // assign a unique 10-char site_id to each item
+  const data = (Array.isArray(raw) ? raw : []).map(item => ({ ...item, site_id: generateRandomId(10) }));
+  // save globally for copy handlers
+  window.generatedData = data;
+  // reset per-row copy state
+  window.copyState = [];
+  window.providedUrl = url;
+  renderTable(data);
       } catch (err) {
         resultDiv.innerHTML = `<p style="color:red;">❌ 生成出错：${err.message}</p>`;
       }
@@ -279,6 +281,7 @@
         <table>
           <thead>
             <tr>
+              <th>已完成</th>
               <th>STT</th>
               <th>主关键词</th>
               <th>相关关键词</th>
@@ -294,14 +297,16 @@
         if (item.error) {
           html += `
             <tr>
+              <td><input type="checkbox" id="done-${index}" disabled ${ (window.copyState && window.copyState[index] && window.copyState[index].size >= 5) ? 'checked' : '' }></td>
               <td>${index + 1}</td>
               <td>${item.main}</td>
-              <td colspan="3" style="color:red;">错误: ${item.error}</td>
+              <td colspan="4" style="color:red;">错误: ${item.error}</td>
             </tr>
           `;
         } else {
           html += `
             <tr>
+              <td><input type="checkbox" id="done-${index}" disabled ${ (window.copyState && window.copyState[index] && window.copyState[index].size >= 5) ? 'checked' : '' }></td>
               <td>${index + 1}</td>
               <td>${item.main}</td>
               <td>
@@ -311,12 +316,12 @@
                 <button class="btn-small copy" onclick="copyContent(${index})">复制内容</button>
               </td>
               <td>
-                <button class="btn-small copy" onclick="copyText('${escapeJs(item.bing_url)}')">复制链接</button>
+                <button class="btn-small copy" onclick="copyBing(${index}, '${escapeJs(item.bing_url)}')">复制链接</button>
               </td>
               <td>
                 <div style="display:flex;flex-direction:column;gap:4px;">
-                  <button class="btn-small copy" onclick="copySiteId()">复制 ID</button>
-                  <button class="btn-small copy" onclick="copySiteUrl()">复制完整链接</button>
+                  <button class="btn-small copy" onclick="copySiteId(${index})">复制 ID</button>
+                  <button class="btn-small copy" onclick="copySiteUrl(${index})">复制完整链接</button>
                 </div>
               </td>
             </tr>
@@ -341,13 +346,37 @@
     function copyRelatedText(index) {
       const item = (window.generatedData && window.generatedData[index]) || {};
       const related = (item.related || []).join('，');
-      copyHtmlContent(related, SITE_BASE + currentSiteId);
+      const siteUrl = SITE_BASE + (item.site_id || generateRandomId(10));
+      copyHtmlContent(related, siteUrl).then(() => markCopied(index, 'related'));
     }
 
     function copyContent(index) {
       const item = (window.generatedData && window.generatedData[index]) || {};
       const content = item.content || '';
-      copyHtmlContent(content, SITE_BASE + currentSiteId);
+      // For content, attach the user-provided URL (from the form) — not the Google Site link
+      const siteUrl = item.site_url || window.providedUrl || '';
+      // remove leading scheme (http:// or https://) from the displayed text inside the content
+      const displayContent = String(content).replace(/https?:\/\//g, '');
+      copyHtmlContent(displayContent, siteUrl).then(() => markCopied(index, 'content'));
+    }
+
+    function copyBing(index, bingUrl) {
+      // copy plain bing url text and mark
+      copyText(bingUrl).then(() => markCopied(index, 'bing'));
+    }
+
+    function markCopied(index, action) {
+      if (!window.copyState) window.copyState = [];
+      if (!window.copyState[index]) window.copyState[index] = new Set();
+      window.copyState[index].add(action);
+      updateRowCheckbox(index);
+    }
+
+    function updateRowCheckbox(index) {
+      const set = (window.copyState && window.copyState[index]);
+      const done = set && set.size >= 5; // related, content, bing, id, siteurl
+      const cb = document.getElementById('done-' + index);
+      if (cb) cb.checked = !!done;
     }
 
     function showToast(message) {
@@ -381,26 +410,31 @@
           'text/html': new Blob([html], { type: 'text/html' })
         });
 
-        navigator.clipboard.write([clipboardItem]).then(() => {
+        return navigator.clipboard.write([clipboardItem]).then(() => {
           showToast("✅ 已复制");
         }).catch(() => {
           // Fallback to basic text copy
-          navigator.clipboard.writeText(plainText);
-          showToast("✅ 已复制");
+          return navigator.clipboard.writeText(plainText).then(() => showToast("✅ 已复制"));
         });
       } catch (err) {
         // Ultimate fallback
-        navigator.clipboard.writeText(plainText);
-        showToast("✅ 已复制");
+        return navigator.clipboard.writeText(plainText).then(() => showToast("✅ 已复制"));
       }
     }
 
     function copyText(text) {
-      navigator.clipboard.writeText(text);
-      showToast("✅ 已复制");
+      try {
+        return navigator.clipboard.writeText(text).then(() => {
+          showToast("✅ 已复制");
+        });
+      } catch (err) {
+        // try synchronous fallback
+        try { document.execCommand && document.execCommand('copy'); } catch (e) {}
+        showToast("✅ 已复制");
+        return Promise.resolve();
+      }
     }
-    // 初始化：生成一个初始 Site ID
-    generateNewSiteId();
+  // 初始化：不需要生成全局 Site ID anymore; each row has its own site_id
   </script>
 </body>
 </html>
