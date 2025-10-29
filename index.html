@@ -34,6 +34,8 @@
       z-index: -1;
       opacity: 0.7;
       background: linear-gradient(135deg, #0f172a, #1e293b);
+      will-change: transform;
+      transition: transform 0.12s linear;
     }
     /* 🌈 Reset and base styles */
     * {
@@ -126,6 +128,65 @@
         opacity: 1;
         transform: scale(1.1);
       }
+    }
+
+    /* Cursor-follow spotlight and layered glow for a richer background */
+    :root {
+      --mx: 50%;
+      --my: 50%;
+    }
+
+    body::after {
+      /* two soft radial glows that follow the cursor */
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      background: radial-gradient(circle at var(--mx) var(--my), rgba(99,102,241,0.12) 0%, transparent 18%),
+                  radial-gradient(circle at calc(var(--mx) + 8%) calc(var(--my) + 6%), rgba(124,58,237,0.06) 0%, transparent 12%);
+      mix-blend-mode: screen;
+      transition: background-position 0.12s linear, opacity 0.2s ease;
+      opacity: 0.95;
+      will-change: background-position, opacity;
+    }
+
+    /* Particle canvas styles + twinkle/vignette layers */
+    .particle-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1; /* sits above threejs (which we keep at -2) but behind UI */
+      mix-blend-mode: screen;
+      opacity: 0.9;
+      filter: blur(0);
+    }
+
+    /* small vignette to focus center */
+    .bg-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      background: radial-gradient(60% 50% at 50% 45%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.28) 70%);
+      mix-blend-mode: multiply;
+      opacity: 0.75;
+    }
+
+    /* twinkle animation for tiny stars (used by canvas but included for fallback visuals) */
+    @keyframes twinkle {
+      0% { opacity: 0.1; transform: scale(0.8); }
+      50% { opacity: 0.9; transform: scale(1.15); }
+      100% { opacity: 0.1; transform: scale(0.9); }
+    }
+
+    /* Respect reduced motion: disable particle canvas and heavy transitions */
+    @media (prefers-reduced-motion: reduce) {
+      .particle-canvas { display: none !important; }
+      body::after { transition: none !important; }
+      #threejs-container { transition: none !important; }
     }
 
     @keyframes pulse {
@@ -1366,12 +1427,47 @@
   .result-table th, .result-table td { padding: 8px; font-size: 9px; }
   .btn-small { padding: 6px 10px; font-size: 13px; }
     .form-section, .input-group, textarea, input { font-size: 12px; }
+    /* Container-local canvas for subtle UI motion and orbs */
+    .container-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2; /* above container-inner background but below UI elements */
+      mix-blend-mode: screen;
+      opacity: 0.9;
+      border-radius: 20px;
+      will-change: transform, opacity;
+    }
+    .header-orbit {
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      left: 50%;
+      top: -80px;
+      transform: translateX(-50%);
+      pointer-events: none;
+      opacity: 0.06;
+      z-index: 1;
+      background: radial-gradient(circle, rgba(99,102,241,0.22) 0%, rgba(124,58,237,0.06) 40%, transparent 70%);
+      filter: blur(30px);
+      border-radius: 50%;
+      animation: headerFloat 8s ease-in-out infinite;
+    }
+    @keyframes headerFloat { 0% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-6px) } 100% { transform: translateX(-50%) translateY(0); } }
   </style>
 </head>
 <body>
   <div id="threejs-container"></div>
+  <!-- Canvas for lightweight particle layer (interactive but cheap) -->
+  <canvas id="bg-particles" class="particle-canvas" aria-hidden="true"></canvas>
   <div class="container">
     <div class="container-inner">
+      <!-- decorative soft orbit behind header -->
+      <div class="header-orbit" aria-hidden="true"></div>
+      <!-- canvas for container-local subtle particles / orbs -->
+      <canvas id="container-canvas" class="container-canvas" aria-hidden="true"></canvas>
       <div class="header">
        
         <h1 class="title">Content Generator Pro</h1>
@@ -2008,9 +2104,20 @@ function renderTable(data) {
           sphere.position.y = sphere.userData.baseY + Math.cos(time * sphere.userData.floatSpeed + i * 2) * 0.4;
           sphere.position.x = sphere.userData.baseX + Math.sin(time * sphere.userData.floatSpeed + i * 2) * 0.25;
         });
-        // Camera subtle movement
-        camera.position.x = (mouseX - window.innerWidth / 2) * 0.002;
-        camera.position.y = -(mouseY - window.innerHeight / 2) * 0.002;
+          // Camera subtle movement (also respond to backgroundInteraction via window.bgMouse when available)
+          const bg = (window.bgMouse) ? window.bgMouse : { x: 0, y: 0 };
+          // smoothing toward target values for gentle motion
+          const targetCamX = bg.x * 0.6; // small influence
+          const targetCamY = -bg.y * 0.4;
+          camera.position.x += (targetCamX - camera.position.x) * 0.05;
+          camera.position.y += (targetCamY - camera.position.y) * 0.05;
+          // also nudge the directional light for extra depth
+          if (directionalLight) {
+            const targetLx = bg.x * 2;
+            const targetLy = -bg.y * 1.5;
+            directionalLight.position.x += (targetLx - directionalLight.position.x) * 0.03;
+            directionalLight.position.y += (targetLy - directionalLight.position.y) * 0.03;
+          }
         camera.lookAt(scene.position);
         renderer.render(scene, camera);
       };
@@ -2025,8 +2132,11 @@ function renderTable(data) {
       // Start animation
       animate();
     }
-    // Initialize Three.js when the page loads
-    window.addEventListener('load', initThreeJS);
+    // Initialize Three.js and container effects when the page loads
+    window.addEventListener('load', () => {
+      try { initThreeJS(); } catch(e) { console.error(e); }
+      try { initContainerEffects(); } catch(e) { /* non-fatal */ }
+    });
 
     // Remove the 3D mouse movement effect to reduce dizziness
     const container = document.querySelector('.container');
@@ -2043,6 +2153,330 @@ function renderTable(data) {
     document.removeEventListener('mouseleave', () => {
       container.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
     });
+
+    /* Container-local visual effects: subtle orbs and interactive motion */
+    function initContainerEffects(){
+      const containerInner = document.querySelector('.container-inner');
+      const canvas = document.getElementById('container-canvas');
+      if (!containerInner || !canvas) return;
+      // respect reduced-motion
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        canvas.style.display = 'none';
+        return;
+      }
+
+      const ctx = canvas.getContext('2d');
+      let w = canvas.width = Math.max(300, Math.round(containerInner.clientWidth));
+      let h = canvas.height = Math.max(200, Math.round(containerInner.clientHeight));
+      const DPR = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(w * DPR);
+      canvas.height = Math.round(h * DPR);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.scale(DPR, DPR);
+
+      // particles local to container
+      const particles = [];
+      const count = Math.max(8, Math.round((w * h) / 40000));
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: 1 + Math.random() * 3,
+          vx: (Math.random() - 0.5) * 0.2,
+          vy: (Math.random() - 0.5) * 0.2,
+          alpha: 0.08 + Math.random() * 0.28,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+
+      // local mouse influence (relative to container)
+      const local = { x: w/2, y: h/2, influence: 0 };
+
+      function onMove(e){
+        const r = containerInner.getBoundingClientRect();
+        const mx = e.clientX - r.left;
+        const my = e.clientY - r.top;
+        local.x = mx; local.y = my; local.influence = 1;
+      }
+      function onLeave(){ local.influence = 0; }
+      containerInner.addEventListener('mousemove', onMove, { passive: true });
+      containerInner.addEventListener('mouseleave', onLeave, { passive: true });
+
+      function onResize(){
+        w = Math.round(containerInner.clientWidth);
+        h = Math.round(containerInner.clientHeight);
+        canvas.width = Math.round(w * DPR);
+        canvas.height = Math.round(h * DPR);
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      }
+      window.addEventListener('resize', onResize);
+
+      let last = performance.now();
+      function frame(now){
+        const dt = Math.min(40, now - last); last = now;
+        ctx.clearRect(0,0,w,h);
+
+        // subtle background wash that moves with window.bgMouse
+        const bgx = (window.bgMouse?.x || 0) * 0.5 * w + w/2;
+        const bgy = (window.bgMouse?.y || 0) * 0.4 * h + h/2;
+        const g = ctx.createRadialGradient(bgx, bgy, 0, bgx, bgy, Math.max(w,h) * 0.8);
+        g.addColorStop(0, 'rgba(99,102,241,0.035)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+
+        // animate particles
+        for (let p of particles){
+          // gentle bobbing
+          p.phase += 0.01 * (1 + Math.sin(now/1000));
+          p.x += p.vx + Math.sin(p.phase) * 0.02;
+          p.y += p.vy + Math.cos(p.phase) * 0.02;
+
+          // respond to local mouse influence (small pull)
+          const dx = local.x - p.x; const dy = local.y - p.y;
+          p.x += dx * 0.0006 * (local.influence ? 6 : 1);
+          p.y += dy * 0.0004 * (local.influence ? 6 : 1);
+
+          // wrap
+          if (p.x < -20) p.x = w + 20; if (p.x > w + 20) p.x = -20;
+          if (p.y < -20) p.y = h + 20; if (p.y > h + 20) p.y = -20;
+
+          // draw soft orb
+          const rad = p.r * (1 + 0.3 * Math.sin(p.phase));
+          const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad * 6);
+          grad.addColorStop(0, `rgba(255,255,255,${(p.alpha * 0.6).toFixed(3)})`);
+          grad.addColorStop(0.2, `rgba(99,102,241,${(p.alpha * 0.18).toFixed(3)})`);
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath(); ctx.arc(p.x, p.y, rad * 4, 0, Math.PI*2); ctx.fill();
+        }
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    /* ---------- Background interaction: cursor-follow glow + threejs parallax + particles ---------- */
+    (function backgroundInteraction(){
+      const root = document.documentElement;
+      const three = document.getElementById('threejs-container');
+      const canvas = document.getElementById('bg-particles');
+
+      // expose a compact normalized mouse state for other code
+      window.bgMouse = { x: 0, y: 0 };
+      // queue used to request short-lived comet bursts from click handlers
+      window._clickCometQueue = [];
+      // helper to request a burst of click-comets (x,y in client coords)
+      window.spawnClickComets = function(x, y, opts = {}){
+        // push a lightweight descriptor; initParticles will consume and spawn visuals
+        try { window._clickCometQueue.push({ x: x || window.innerWidth/2, y: y || window.innerHeight/2, opts }); } catch(e) {}
+      };
+
+      // update CSS vars and parallax transform on mouse move
+      window.addEventListener('mousemove', (e) => {
+        const xPct = (e.clientX / window.innerWidth) * 100;
+        const yPct = (e.clientY / window.innerHeight) * 100;
+        root.style.setProperty('--mx', xPct + '%');
+        root.style.setProperty('--my', yPct + '%');
+
+        // normalized -1..1 for JS usage
+        window.bgMouse.x = (xPct - 50) / 50;
+        window.bgMouse.y = (yPct - 50) / 50;
+
+        // subtle parallax: move the threejs container a few pixels based on cursor
+        // increase influence for a more dynamic background motion
+        const tx = (xPct - 50) * 0.12; // horizontal shift
+        const ty = (yPct - 50) * 0.08; // vertical shift
+        if (three) three.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
+      }, { passive: true });
+
+      // also respond to touch moves for mobile
+      window.addEventListener('touchmove', (ev) => {
+        const t = ev.touches && ev.touches[0];
+        if (!t) return;
+        const xPct = (t.clientX / window.innerWidth) * 100;
+        const yPct = (t.clientY / window.innerHeight) * 100;
+        root.style.setProperty('--mx', xPct + '%');
+        root.style.setProperty('--my', yPct + '%');
+        window.bgMouse.x = (xPct - 50) / 50;
+        window.bgMouse.y = (yPct - 50) / 50;
+        const tx = (xPct - 50) * 0.04;
+        const ty = (yPct - 50) * 0.03;
+        if (three) three.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
+      }, { passive: true });
+
+      // click pulse: small transient radial flash where user clicked
+      window.addEventListener('click', (e) => {
+        const pulse = document.createElement('div');
+        pulse.style.position = 'fixed';
+        pulse.style.left = e.clientX + 'px';
+        pulse.style.top = e.clientY + 'px';
+        pulse.style.width = '220px';
+        pulse.style.height = '220px';
+        pulse.style.borderRadius = '50%';
+        pulse.style.pointerEvents = 'none';
+        pulse.style.transform = 'translate(-50%, -50%) scale(0.2)';
+        pulse.style.background = 'radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 60%)';
+        pulse.style.zIndex = 9999;
+        pulse.style.transition = 'transform 650ms cubic-bezier(0.2,0.8,0.2,1), opacity 650ms ease-out';
+        document.body.appendChild(pulse);
+        requestAnimationFrame(() => {
+          pulse.style.transform = 'translate(-50%, -50%) scale(1)';
+          pulse.style.opacity = '0';
+        });
+        setTimeout(() => pulse.remove(), 700);
+
+        // also spawn a quick burst of fast comets on the canvas for a click effect
+        try { if (typeof spawnClickComets === 'function') spawnClickComets(e.clientX, e.clientY); } catch (err) { /* ignore */ }
+      }, { passive: true });
+
+      // Lightweight particle layer (canvas-based) — simple moving orbs and twinkles
+      function initParticles() {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let w = canvas.width = window.innerWidth;
+        let h = canvas.height = window.innerHeight;
+        const DPR = Math.min(2, window.devicePixelRatio || 1);
+        canvas.width = Math.round(w * DPR);
+        canvas.height = Math.round(h * DPR);
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.scale(DPR, DPR);
+
+        const particles = [];
+        // increase density slightly for a richer background; scale to viewport
+        const baseCount = Math.round((w * h) / 60000);
+        const count = Math.max(12, baseCount);
+        for (let i = 0; i < count; i++) {
+          particles.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            r: 0.8 + Math.random() * 3.2,
+            vx: (Math.random() - 0.5) * 0.28,
+            vy: -0.04 - Math.random() * 0.36,
+            alpha: 0.18 + Math.random() * 0.62,
+            twinkle: Math.random() * 2000
+          });
+        }
+
+        // comet/trail layer for streaks and click bursts
+        const comets = [];
+
+        // spawn a few persistent slow comets for subtle streaks
+        (function spawnAmbientComets(){
+          const ambient = Math.max(2, Math.round(Math.sqrt(w * h) / 600));
+          for (let i = 0; i < ambient; i++) {
+            comets.push({
+              x: Math.random() * w,
+              y: Math.random() * h,
+              vx: (Math.random() - 0.5) * 1.2,
+              vy: -0.3 - Math.random() * 0.6,
+              len: 6 + Math.random() * 28,
+              alpha: 0.08 + Math.random() * 0.22,
+              life: Infinity
+            });
+          }
+        })();
+
+        function onResize() {
+          w = canvas.width = window.innerWidth * DPR;
+          h = canvas.height = window.innerHeight * DPR;
+          canvas.width = Math.round(window.innerWidth * DPR);
+          canvas.height = Math.round(window.innerHeight * DPR);
+          canvas.style.width = window.innerWidth + 'px';
+          canvas.style.height = window.innerHeight + 'px';
+          ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        }
+
+        window.addEventListener('resize', onResize);
+
+        let last = performance.now();
+        function frame(now) {
+          const dt = Math.min(40, now - last);
+          last = now;
+          ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+          // draw soft radial glows
+          for (let p of particles) {
+            p.x += p.vx * (dt * 0.08) + (window.bgMouse.x || 0) * 1.2;
+            p.y += p.vy * (dt * 0.08) + (window.bgMouse.y || 0) * 0.6;
+            if (p.y < -80) p.y = window.innerHeight + 40;
+            if (p.x < -80) p.x = window.innerWidth + 40;
+            if (p.x > window.innerWidth + 80) p.x = -40;
+
+            // twinkle
+            const tw = (Math.sin((now + p.twinkle) / 300) + 1) / 2;
+            const alpha = p.alpha * (0.5 + 0.5 * tw);
+
+            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 10);
+            grad.addColorStop(0, `rgba(255,255,255,${alpha * 0.28})`);
+            grad.addColorStop(0.2, `rgba(99,102,241,${alpha * 0.16})`);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r * 9, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // consume click-comet requests and spawn short-lived comets
+          while (window._clickCometQueue && window._clickCometQueue.length) {
+            const q = window._clickCometQueue.shift();
+            const burst = 8 + Math.round(Math.random() * 10);
+            for (let i = 0; i < burst; i++) {
+              comets.push({
+                x: q.x + (Math.random() - 0.5) * 40,
+                y: q.y + (Math.random() - 0.5) * 40,
+                vx: ((Math.random() - 0.5) * 6) + (Math.random() * 2 - 1),
+                vy: -1 - Math.random() * 4,
+                len: 6 + Math.random() * 26,
+                alpha: 0.3 + Math.random() * 0.6,
+                life: 800 + Math.random() * 600
+              });
+            }
+          }
+
+          // draw comets (streaks)
+          for (let i = comets.length - 1; i >= 0; i--) {
+            const c = comets[i];
+            // delta move
+            c.x += c.vx * (dt * 0.06);
+            c.y += c.vy * (dt * 0.06);
+            if (c.life !== Infinity) c.life -= dt;
+            // remove if life expired or off-screen far
+            if ((c.life !== Infinity && c.life <= 0) || c.y < -200 || c.x < -200 || c.x > window.innerWidth + 200) {
+              comets.splice(i, 1);
+              continue;
+            }
+
+            // draw as directional gradient / streak
+            const grad = ctx.createLinearGradient(c.x - c.vx * 6, c.y - c.vy * 6, c.x + c.vx * 6, c.y + c.vy * 6);
+            grad.addColorStop(0, `rgba(255,255,255,${Math.max(0, c.alpha * 0.0)})`);
+            grad.addColorStop(0.4, `rgba(255,255,255,${(c.alpha * 0.6).toFixed(3)})`);
+            grad.addColorStop(1, `rgba(99,102,241,${(c.alpha * 0.18).toFixed(3)})`);
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            // ellipse rotated along velocity vector
+            const angle = Math.atan2(c.vy, c.vx);
+            ctx.save();
+            ctx.translate(c.x, c.y);
+            ctx.rotate(angle);
+            ctx.ellipse(0, 0, c.len, Math.max(1, c.len * 0.25), 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      // init particles (non-blocking) unless the user prefers reduced motion
+      if (!window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setTimeout(initParticles, 300);
+      }
+    })();
   </script>
 </body>
 </html>
