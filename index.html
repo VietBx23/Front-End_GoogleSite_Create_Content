@@ -14,6 +14,7 @@
       gap: 8px;
       justify-content: flex-start;
       align-items: center;
+      flex-wrap: nowrap; /* keep buttons on the same row */
     }
     .url-cell {
       font-size: 13px;
@@ -1131,6 +1132,7 @@
       position: relative;
       overflow: hidden;
       backdrop-filter: blur(4px);
+      white-space: nowrap; /* prevent internal wrapping so buttons stay compact */
     }
 
     .btn-small::before {
@@ -1211,7 +1213,7 @@
     .action-group {
       display: flex;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
     }
 
     .btn-small::before {
@@ -1453,7 +1455,7 @@
       <div class="header">
        
         <h1 class="title">Content Generator Pro</h1>
-        <p class="subtitle">✨✨Made with by Péi Chūn Yuè ✨✨</p>
+            <p class="subtitle">✨✨Made with by Péi Chūn Yuè ✨✨</p>
       </div>
       <div class="form-container">
 
@@ -1745,7 +1747,7 @@ function renderTable(data) {
         html += `
         <tr data-index="${index}">
           <td>${index + 1}</td>
-          <td><div class="action-group"><button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button></div></td>
+          <td><div class="action-group"><button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button><button class="btn-small" onclick="copyPackage(${index})">📦 Copy Pack</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyContent(${index})">📝 Copy Content</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyDomain(${index})">🌐 Copy Domain</button></div></td>
             <td><div class="action-group"><button class="btn-small" onclick="copyFullDomain(${index})">🔗Full Domain</button></div></td>
@@ -1815,6 +1817,40 @@ function renderTable(data) {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(q)}`;
 
   copyBing(index, url);
+}
+
+// Copy package: main keyword + 【网址：domain】 + up to 5 subkeywords joined by ' - '
+function copyPackage(index) {
+  const item = (window.generatedData && window.generatedData[index]) || {};
+  // try to get related keywords from item, otherwise fall back to the textarea keywords
+  let related = Array.isArray(item.related) ? item.related.slice() : [];
+  if (!related.length) {
+    const raw = document.getElementById('keywords')?.value || '';
+    related = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  }
+
+  const main = related[0] || '';
+
+  // domain from providedUrl or form input (no scheme)
+  const rawUrl = window.providedUrl || (document.getElementById('url')?.value || '');
+  const domain = rawUrl ? rawUrl.replace(/^https?:\/\//, '').split('/')[0] : '';
+
+  // take up to 5 subkeywords after the main one
+  const subs = related.slice(1, 6).join(' - ');
+
+  const assembled = `${main}${domain ? ' 【网址：' + domain + '】' : ''}${subs ? ' ' + subs : ''}`.trim();
+
+  if (!assembled) {
+    showToast('⚠️ Không có nội dung để sao chép');
+    return;
+  }
+
+  navigator.clipboard.writeText(assembled).then(() => {
+    showToast('✅ Pack copied!');
+    try { markCopied(index, 'package'); } catch(e) {}
+  }).catch(() => {
+    showToast('⚠️ Unable to copy pack');
+  });
 }
 
 
