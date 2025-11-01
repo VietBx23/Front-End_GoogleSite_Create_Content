@@ -1455,7 +1455,7 @@
       <div class="header">
        
         <h1 class="title">Content Generator Pro</h1>
-            <p class="subtitle">✨✨Made with by Péi Chūn Yuè ✨✨</p>
+        <p class="subtitle">Generate optimized content efficiently with our advanced tools</p>
       </div>
       <div class="form-container">
 
@@ -1726,7 +1726,6 @@ function renderTable(data) {
             <th>Keywords</th>
             <th>Content</th>
             <th>Domain</th>
-              <th> Full Domain</th>
                <th>Bing</th>
             <th>ID</th>
             <th>Google URL</th>
@@ -1747,10 +1746,9 @@ function renderTable(data) {
         html += `
         <tr data-index="${index}">
           <td>${index + 1}</td>
-          <td><div class="action-group"><button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button><button class="btn-small" onclick="copyPackage(${index})">📦 Copy Pack</button></div></td>
+          <td><div class="action-group"><button class="btn-small" onclick="copyPackage(${index})">📦 Copy Pack</button> <button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyContent(${index})">📝 Copy Content</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyDomain(${index})">🌐 Copy Domain</button></div></td>
-            <td><div class="action-group"><button class="btn-small" onclick="copyFullDomain(${index})">🔗Full Domain</button></div></td>
               <td><div class="action-group"><button class="btn-small" onclick="copyBingSearch(${index})">🔎 Copy Bing</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyRandomId(${index})">🆔 Copy ID</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyFullUrl(${index})">🔗 Google URL</button></div></td>
