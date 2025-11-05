@@ -1754,7 +1754,7 @@ function renderTable(data) {
         html += `
         <tr data-index="${index}">
           <td>${index + 1}</td>
-          <td><div class="action-group"> <button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button></div></td>
+      <td><div class="action-group"><button class="btn-small" onclick="copyPackage(${index})">📦 Copy Pack</button> <button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyContent(${index})">📝 Copy Content</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyDomain(${index})">🌐 Copy Domain</button></div></td>
               <td><div class="action-group"><button class="btn-small" onclick="copyBingSearch(${index})">🔎 Copy Bing</button></div></td>
@@ -2507,5 +2507,6 @@ function copyPackage(index) {
   </script>
 </body>
 </html>
+
 
 
