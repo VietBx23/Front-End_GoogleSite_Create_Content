@@ -1494,26 +1494,6 @@
         </div>
       </div>
 
-      <div class="input-group num-group">
-        <div class="input-label">
-          <span class="label-icon">🔢</span>
-          <label for="numArticles">Number of articles</label>
-        </div>
-        <div class="input-wrapper">
-          <input 
-            id="numArticles" 
-            type="number" 
-            min="1" 
-            max="50" 
-            value="20"
-            placeholder="Number of articles to generate"
-          >
-        </div>
-        <div class="input-help">
-          How many variations to generate for the given main keyword (1-50).
-        </div>
-      </div>
-
       <button class="generate-btn" onclick="generateContent()">
         <i>✨</i>
         Generate Premium Content
@@ -1560,23 +1540,15 @@
 
     async function generateContent() {
       const generateBtn = document.querySelector('.generate-btn');
-      const rawKeywords = document.getElementById("keywords").value || '';
-      const keywords = rawKeywords.trim();
+      const keywords = document.getElementById("keywords").value.trim();
       const url = document.getElementById("url").value.trim() || "http://191.run";
-      const numArticlesInput = document.getElementById('numArticles');
-      const numArticles = parseInt(numArticlesInput?.value || '1', 10) || 1;
-      // derive main_keyword as the first non-empty line from textarea
-      const lines = rawKeywords.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      const main_keyword = lines.length ? lines[0] : '';
       const resultDiv = document.getElementById("result");
       
-      if (!main_keyword) {
-        showToast("⚠️ Please enter at least one primary keyword (first non-empty line)");
-        return;
-      }
+      // Generate new site ID when generating content
+      currentSiteId = generateRandomId(10);
 
-      if (isNaN(numArticles) || numArticles < 1 || numArticles > 50) {
-        showToast('⚠️ num_articles must be between 1 and 50');
+      if (!keywords) {
+        showToast("⚠️ Please enter at least one keyword");
         return;
       }
 
@@ -1595,26 +1567,22 @@
         const response = await fetch("https://backend-googlesite-create-content1.onrender.com/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ main_keyword, url, num_articles: numArticles })
+          body: JSON.stringify({ keywords, url })
         });
 
         if (!response.ok) throw new Error("服务器返回错误：" + response.status);
 
-        const raw = await response.json();
-        // backend returns an array of items with { main, related, bing_url, content }
-        const data = (Array.isArray(raw) ? raw : []).map(item => ({ ...item, site_id: generateRandomId(10) }));
-        // save globally for copy handlers
-        window.generatedData = data;
-        // reset per-row copy state
-        window.copyState = [];
-        window.providedUrl = url;
-        renderTable(data);
+  const raw = await response.json();
+  // assign a unique 10-char site_id to each item
+  const data = (Array.isArray(raw) ? raw : []).map(item => ({ ...item, site_id: generateRandomId(10) }));
+  // save globally for copy handlers
+  window.generatedData = data;
+  // reset per-row copy state
+  window.copyState = [];
+  window.providedUrl = url;
+  renderTable(data);
       } catch (err) {
         resultDiv.innerHTML = `<p style="color:red;">❌ 生成出错：${err.message}</p>`;
-      } finally {
-        // restore button state
-        generateBtn.classList.remove('loading');
-        generateBtn.innerHTML = '<i>✨</i> Generate Premium Content';
       }
     }
 
@@ -1674,40 +1642,15 @@ function copyFormUrl() {
     }
   }
 
-  // Function to copy content (copies both plain text and HTML with a small font + link)
+  // Function to copy content
   function copyContent(index) {
-    const item = (window.generatedData && window.generatedData[index]) || {};
-  const content = item.content || '';
-  if (!content) return showToast('⚠️ No content to copy');
-
-  // Build plain text version (prefer the user-provided target URL from the form)
-  const link = (window.providedUrl && window.providedUrl.trim()) || (document.getElementById('url')?.value?.trim()) || (item.site_id ? `${SITE_BASE}${item.site_id}` : '');
-  const plain = link ? `${content}\n\n${link}` : content;
-
-  // Prepare a display version of the content with http/https removed for nicer appearance
-  const displayContent = String(content).replace(/https?:\/\//g, '');
-
-  // Build HTML version and force a smaller font so pasted text appears smaller
-  const escaped = escapeHtml(displayContent).replace(/\n/g, '<br>');
-  // wrap the content itself in an anchor so pasted content is clickable
-  const anchorStart = link ? `<a href="${link}" target="_blank" style="color:inherit;display:inline-block">` : '';
-  const anchorEnd = link ? `</a>` : '';
-  const html = `${anchorStart}<div style="font-size:24px;line-height:1.4;color:inherit">${escaped}</div>${anchorEnd}`;
-
-    try {
-      const clipboardItem = new ClipboardItem({
-        'text/plain': new Blob([plain], { type: 'text/plain' }),
-        'text/html': new Blob([html], { type: 'text/html' })
+    const item = window.generatedData[index];
+    if (item && item.content) {
+      navigator.clipboard.writeText(item.content).then(() => {
+        showToast("✅ Content copied successfully");
       });
-      navigator.clipboard.write([clipboardItem]).then(() => {
-        showToast('✅ Content copied!');
-        try { markCopied(index, 'content'); } catch (e) {}
-      }).catch(() => {
-        // fallback to plain text
-        navigator.clipboard.writeText(plain).then(() => { showToast('✅ Content copied!'); try { markCopied(index, 'content'); } catch(e){}; }).catch(() => showToast('⚠️ Unable to copy content'));
-      });
-    } catch (err) {
-      navigator.clipboard.writeText(plain).then(() => { showToast('✅ Content copied!'); try { markCopied(index, 'content'); } catch(e){}; }).catch(() => showToast('⚠️ Unable to copy content'));
+    } else {
+      showToast("⚠️ No content to copy");
     }
   }
 
@@ -1731,35 +1674,38 @@ function copyDomain(index) {
 // Copy all related keywords as a single <a> tag linking to Google Site (text and link)
 function copyRelatedKeywords(index) {
   const item = window.generatedData && window.generatedData[index];
-  if (!item) return showToast("⚠️ No item found");
-
-  const main = item.main || ((document.getElementById('keywords')?.value || '').split(/\r?\n/).map(s=>s.trim()).filter(Boolean)[0] || '');
-  const related = Array.isArray(item.related) ? item.related : [];
-  if (!main && related.length === 0) return showToast("⚠️ No keywords to copy");
-
-  // nối tất cả từ khóa: từ khóa chính - từ khóa phụ 1 - từ khóa phụ 2 - ...
-  const allKeywords = [main, ...related.filter(Boolean)].filter(Boolean);
-  const plain = allKeywords.join(' - ');
-
-  // HTML link points to the generated site if available
-  const siteUrl = item.site_id ? `${SITE_BASE}${item.site_id}` : (window.providedUrl || '');
-  const html = siteUrl ? `<a href="${siteUrl}" target="_blank" style="color:#06b6d4;text-decoration:underline;">${plain}</a>` : plain;
-
-  try {
-    const clipboardItem = new ClipboardItem({
-      'text/plain': new Blob([plain], { type: 'text/plain' }),
-      'text/html': new Blob([html], { type: 'text/html' })
-    });
-    navigator.clipboard.write([clipboardItem]).then(() => {
-      showToast('✅ Keywords copied!');
-      markCopied(index, 'related');
-    }).catch(() => {
-      navigator.clipboard.writeText(plain).then(() => { showToast('✅ Keywords copied!'); markCopied(index, 'related'); });
-    });
-  } catch (err) {
-    navigator.clipboard.writeText(plain).then(() => { showToast('✅ Keywords copied!'); markCopied(index, 'related'); }).catch(() => showToast('⚠️ Unable to copy keywords'));
+  if (item && item.related && item.site_id) {
+    const siteUrl = `${SITE_BASE}${item.site_id}`;
+    const keywordsText = item.related.join(', ');
+    // HTML: clickable link with keywords as text
+  const htmlLink = `<a href='${siteUrl}' target='_blank' style='color:#06b6d4;text-decoration:underline;'>${keywordsText}</a>`;
+    // Copy both HTML and plain text
+    try {
+      const clipboardItem = new ClipboardItem({
+        'text/html': new Blob([htmlLink], { type: 'text/html' }),
+        'text/plain': new Blob([keywordsText], { type: 'text/plain' })
+      });
+      navigator.clipboard.write([clipboardItem]).then(() => {
+        showToast("✅ Keywords with Google Site link copied!");
+        markCopied(index, 'related');
+      }).catch(() => {
+        // fallback
+        navigator.clipboard.writeText(keywordsText).then(() => {
+          showToast("✅ Keywords copied!");
+          markCopied(index, 'related');
+        });
+      });
+    } catch (err) {
+      navigator.clipboard.writeText(keywordsText).then(() => {
+        showToast("✅ Keywords copied!");
+        markCopied(index, 'related');
+      });
+    }
+  } else {
+    showToast("⚠️ No related keywords to copy");
   }
 }
+
 // Removing the copyFullDomainUrl function as requested
 // Removed the "Copy Full URL" button from the table rendering logic
 function renderTable(data) {
@@ -1801,12 +1747,7 @@ function renderTable(data) {
         <tr data-index="${index}">
           <td>${index + 1}</td>
           <td><div class="action-group"><button class="btn-small" onclick="copyPackage(${index})">📦 Copy Pack</button> <button class="btn-small" onclick="copyRelatedKeywords(${index})">🔗 Copy Keywords</button></div></td>
-          <td>
-            <div style="display:flex;align-items:flex-start;gap:8px;">
-            
-              <div class="action-group"><button class="btn-small" onclick="copyContent(${index})">📝 Copy Content</button></div>
-            </div>
-          </td>
+          <td><div class="action-group"><button class="btn-small" onclick="copyContent(${index})">📝 Copy Content</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyDomain(${index})">🌐 Copy Domain</button></div></td>
               <td><div class="action-group"><button class="btn-small" onclick="copyBingSearch(${index})">🔎 Copy Bing</button></div></td>
           <td><div class="action-group"><button class="btn-small" onclick="copyRandomId(${index})">🆔 Copy ID</button></div></td>
@@ -1843,6 +1784,15 @@ function renderTable(data) {
       copyHtmlContent(related, siteUrl).then(() => markCopied(index, 'related'));
     }
 
+    function copyContent(index) {
+      const item = (window.generatedData && window.generatedData[index]) || {};
+      const content = item.content || '';
+      // For content, attach the user-provided URL (from the form) — not the Google Site link
+      const siteUrl = item.site_url || window.providedUrl || '';
+      // remove leading scheme (http:// or https://) from the displayed text inside the content
+      const displayContent = String(content).replace(/https?:\/\//g, '');
+      copyHtmlContent(displayContent, siteUrl).then(() => markCopied(index, 'content'));
+    }
 
     function copyBing(index, bingUrl) {
       // copy plain bing url text and mark
@@ -1867,82 +1817,38 @@ function renderTable(data) {
   copyBing(index, url);
 }
 
-// Open the target URL when clicking the content preview in the table
-function openTargetFromPreview(index) {
-  const item = (window.generatedData && window.generatedData[index]) || {};
-  // prefer the user-provided target URL from the form
-  const url = (window.providedUrl && window.providedUrl.trim()) || (document.getElementById('url')?.value?.trim()) || (item.site_id ? `${SITE_BASE}${item.site_id}` : '');
-  if (!url) return showToast('⚠️ No target URL available');
-  try { window.open(url, '_blank'); } catch (e) { window.location.href = url; }
-}
-
 // Copy package: main keyword + 【网址：domain】 + up to 5 subkeywords joined by ' - '
 function copyPackage(index) {
   const item = (window.generatedData && window.generatedData[index]) || {};
-  // New behavior: if there are more than 3 results, take the related keywords of the next 3 articles
-  const rows = Array.isArray(window.generatedData) ? window.generatedData : [];
-  const textareaLines = (document.getElementById('keywords')?.value || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const main = item.main || textareaLines[0] || '';
+  // try to get related keywords from item, otherwise fall back to the textarea keywords
+  let related = Array.isArray(item.related) ? item.related.slice() : [];
+  if (!related.length) {
+    const raw = document.getElementById('keywords')?.value || '';
+    related = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  }
 
-  if (!main) {
-    showToast('⚠️ No main keyword available to build pack');
+  const main = related[0] || '';
+
+  // domain from providedUrl or form input (no scheme)
+  const rawUrl = window.providedUrl || (document.getElementById('url')?.value || '');
+  const domain = rawUrl ? rawUrl.replace(/^https?:\/\//, '').split('/')[0] : '';
+
+  // take up to 5 subkeywords after the main one
+  const subs = related.slice(1, 6).join(' - ');
+
+  const assembled = `${main}${domain ? ' 【网址：' + domain + '】' : ''}${subs ? ' ' + subs : ''}`.trim();
+
+  if (!assembled) {
+    showToast('⚠️ Không có nội dung để sao chép');
     return;
   }
 
-  let plainLines = [];
-  let htmlLines = [];
-
-  if (rows.length > 3) {
-    // take next 3 articles (wrap around if needed)
-    for (let offset = 1; offset <= 3; offset++) {
-      const idx = (index + offset) % rows.length;
-      const next = rows[idx] || {};
-      const related = Array.isArray(next.related) ? next.related.filter(Boolean) : [];
-      // if no related keywords, skip this line
-      if (!related.length) continue;
-      // construct plain line: main - sub1 - sub2 ...
-      const plainSubs = related.join(' - ');
-      plainLines.push(`${main} - ${plainSubs}`);
-
-  // construct html line: the entire line is a single anchor linking to the site's URL
-  const site = next.site_id ? `${SITE_BASE}${next.site_id}` : (window.providedUrl || document.getElementById('url')?.value?.trim() || '');
-  const lineText = `${main} - ${related.join(' - ')}`;
-  htmlLines.push(site ? `<a href="${site}" target="_blank" style="color:#06b6d4;text-decoration:underline">${escapeHtml(lineText)}</a>` : escapeHtml(lineText));
-    }
-  }
-
-  // Fallback: if we didn't build 3 lines (rows <= 3 or missing related), fall back to previous behavior for current item
-  if (plainLines.length === 0) {
-    let related = Array.isArray(item.related) ? item.related.slice() : [];
-    if (!related.length) {
-      related = textareaLines.slice(1);
-    }
-    related = related.filter(r => r && r !== main);
-    const subs = related.slice(0, 3);
-    plainLines.push(main + (subs.length ? ' - ' + subs.join(' - ') : ''));
-  const site = item.site_id ? `${SITE_BASE}${item.site_id}` : (window.providedUrl || document.getElementById('url')?.value?.trim() || '');
-  const lineText = subs.length ? (main + ' - ' + subs.join(' - ')) : main;
-  htmlLines.push(site ? `<a href="${site}" target="_blank" style="color:#06b6d4;text-decoration:underline">${escapeHtml(lineText)}</a>` : escapeHtml(lineText));
-  }
-
-  const plain = plainLines.join('\n');
-  const html = htmlLines.map(l => `<div style="font-size:13px;line-height:1.3">${l}</div>`).join('');
-
-  try {
-    // attempt to write both HTML and plain text
-    const clipboardItem = new ClipboardItem({
-      'text/plain': new Blob([plain], { type: 'text/plain' }),
-      'text/html': new Blob([html], { type: 'text/html' })
-    });
-    navigator.clipboard.write([clipboardItem]).then(() => {
-      showToast('✅ Pack copied!');
-      try { markCopied(index, 'package'); } catch (e) {}
-    }).catch(() => {
-      navigator.clipboard.writeText(plain).then(() => { showToast('✅ Pack copied!'); try { markCopied(index, 'package'); } catch(e){}; }).catch(() => showToast('⚠️ Unable to copy pack'));
-    });
-  } catch (err) {
-    navigator.clipboard.writeText(plain).then(() => { showToast('✅ Pack copied!'); try { markCopied(index, 'package'); } catch(e){}; }).catch(() => showToast('⚠️ Unable to copy pack'));
-  }
+  navigator.clipboard.writeText(assembled).then(() => {
+    showToast('✅ Pack copied!');
+    try { markCopied(index, 'package'); } catch(e) {}
+  }).catch(() => {
+    showToast('⚠️ Unable to copy pack');
+  });
 }
 
 
@@ -2054,29 +1960,30 @@ function copyPackage(index) {
     }
 
     function copyText(text) {
-      // primary clipboard write with a graceful fallback
       try {
-        return navigator.clipboard.writeText(String(text)).then(() => {
+        return navigator.clipboard.writeText(text).then(() => {
           showToast("✅ Copied successfully");
         });
       } catch (err) {
-        // fallback to execCommand copy technique
-        try {
-          const textarea = document.createElement('textarea');
-          textarea.value = String(text);
-          textarea.setAttribute('readonly', '');
-          textarea.style.position = 'absolute';
-          textarea.style.left = '-9999px';
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand('copy');
-          textarea.remove();
-          showToast('✅ Copied successfully');
-          return Promise.resolve();
-        } catch (e) {
-          showToast('⚠️ Unable to copy');
-          return Promise.reject(e);
+        // try synchronous fallback
+        try { document.execCommand && document.execCommand('copy'); } catch (e) {}
+        showToast("✅ Copied successfully");
+        return Promise.resolve();
+      }
+
+      // Copy the target full URL (https://domain) from the provided form URL
+      function copyTargetUrl(index) {
+        const url = window.providedUrl || document.getElementById('url').value.trim() || '';
+        if (!url) {
+          showToast('⚠️ No URL to copy');
+          return;
         }
+        const domain = url.replace(/^https?:\/\//, '').split('/')[0];
+        const full = `https://${domain}`;
+        navigator.clipboard.writeText(full).then(() => {
+          showToast('✅ Target URL copied!');
+          // optional: markCopied(index, 'target'); // not counted toward the 5 required actions
+        }).catch(() => showToast('⚠️ Unable to copy target URL'));
       }
     }
 
@@ -2592,3 +2499,4 @@ function copyPackage(index) {
   </script>
 </body>
 </html>
+
