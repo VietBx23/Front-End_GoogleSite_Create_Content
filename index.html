@@ -1148,7 +1148,7 @@
         rgba(255, 255, 255, 0.1),
         transparent
       );
-      transform: translateX(-100%);
+      transform: translateX(-100%) rotate(45deg);
       transition: transform 0.6s ease;
     }
 
@@ -2404,7 +2404,10 @@ function copyPackage(index) {
           h = canvas.height = window.innerHeight * DPR;
           canvas.width = Math.round(window.innerWidth * DPR);
           canvas.height = Math.round(window.innerHeight * DPR);
-          canvas.style.width = window.innerWidth + 'px';
+          canvas.style.width = window.innerWidth + 'px';Copy Keywords xuất ra đúng định dạng:
+
+Kết quả: từ khóa chính - từ khóa phụ 1 - từ khóa phụ 2 - từ khóa phụ 3 ... (không giới hạn số lượng, nối bằng dấu -).
+Bạn chỉ cần nối tất cả từ khóa lại bằng dấu " - " như sau (trong hàm copyKeywords):
           canvas.style.height = window.innerHeight + 'px';
           ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
         }
