@@ -1676,7 +1676,7 @@ function copyRelatedKeywords(index) {
   const item = window.generatedData && window.generatedData[index];
   if (item && item.related && item.site_id) {
     const siteUrl = `${SITE_BASE}${item.site_id}`;
-    const keywordsText = item.related.join(', ');
+    const keywordsText = item.related.join(' - ');
     // HTML: clickable link with keywords as text
   const htmlLink = `<a href='${siteUrl}' target='_blank' style='color:#06b6d4;text-decoration:underline;'>${keywordsText}</a>`;
     // Copy both HTML and plain text
@@ -2499,5 +2499,6 @@ function copyPackage(index) {
   </script>
 </body>
 </html>
+
 
 
